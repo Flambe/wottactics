@@ -7,18 +7,18 @@ var sizeof = require('object-sizeof');
 var request = require('request');
 
 var redis = require('redis')
-var redis_client = redis.createClient(secrets.redis_options);
+var redis_client = redis.createClient(process.env.REDIS_URL || secrets.redis_options);
 
 redis_client.on("error", function (e) {
     console.error("Error " + e);
 });
 
-redis_client.auth(secrets.redis_options.pass, (e) => {
-	
-if (e) {
-	console.error(e);
-	return;
-}
+// redis_client.auth(secrets.redis_options.pass, (e) => {
+
+// if (e) {
+// 	console.error(e);
+// 	return;
+// }
 
 var cookieParser = require('cookie-parser')
 var Session = require('express-session');
@@ -51,7 +51,7 @@ app.use(compress());
 app.use(bodyParser.json({limit: '50mb', extended: true}));
 app.use(bodyParser.urlencoded({limit: '50mb', extended: true}));
 app.use(cookieParser())
-  
+
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
@@ -106,17 +106,17 @@ app.use(function (req, res, next) {
 // not pretty but oh so handy to not crash the server
 process.on('uncaughtException', function (err) {
  	console.log(err);
-	console.log(err.stack);	
+	console.log(err.stack);
 });
 
 //load mongo
-connection_string =  secrets.mongodb_string;
+connection_string =  process.env.MONGODB_URI || secrets.mongodb_string;
 
 console.log("Connecting to mongodb")
 
 MongoClient = require('mongodb').MongoClient;
 MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, db) {
-	if(err) throw err;	
+	if(err) throw err;
 
 	db.createCollection('tactics');
 	db.createCollection('users');
@@ -124,7 +124,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 	db.collection('tactics').createIndex( { "createdAt": 1 }, { expireAfterSeconds: 31622400 } );
 
 	db.createCollection('clans');
-	
+
 	function clean_up_room(room) {
 		setTimeout( function() {
 			if (room_data[room]) {
@@ -140,7 +140,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			}
 		}, 60000);
 	}
-	
+
 	function save_room(room, cb) {
 		if (room_data[room]) {
 			room_data[room]._id = room;
@@ -150,7 +150,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			});
 		}
 	}
-	
+
 	function get_tactics(identity, game, cb) {
 		if (identity) {
 			db.collection('users').findOne({_id:identity},{'tactics':1, 'rooms':1}, function(err, data) {
@@ -174,18 +174,18 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 		} else {
 			cb([],[]);
 		}
-	}	
-	
+	}
+
 	function set_game(req, res, game) {
 		req.session.game = game;
-		res.cookie('game', game, {maxAge: 30 * 3600 * 1000, domain: get_host(req)}); 	
+		res.cookie('game', game, {maxAge: 30 * 3600 * 1000, domain: get_host(req)});
 	}
-	
+
 	function set_locale(req, res, locale) {
 		req.session.locale = locale;
-		res.cookie('locale', locale, {maxAge: 30 * 3600 * 1000, domain: get_host(req)}); 	
+		res.cookie('locale', locale, {maxAge: 30 * 3600 * 1000, domain: get_host(req)});
 	}
-	
+
 	function push_tactic_to_db(user, room, name, uid, remove_old) {
 		//store a link to the tacticn in user data
 		var date = Date.now();
@@ -195,7 +195,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 					db.collection('users').updateOne({_id:user.identity}, {$pull: {tactics:{uid:uid, date:{$ne:date}}}}, {upsert: true});
 				} catch(e) {} //probably doesn't exist
 			}
-		});		
+		});
 		//store the tactic in the stored_tactics list
 		var data = JSON.parse(JSON.stringify(room_data[room]));
 		data.name = name;
@@ -208,7 +208,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 		}
 		if (!data.users) data.users = {}
 		data.users[user.identity] = "owner";
-		
+
 		data._id = uid;
 		db.collection('stored_tactics').replaceOne({_id:uid}, data, {upsert: true});
 
@@ -218,12 +218,12 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 		room_data[room].lost_identities[user.identity].tactic_name = name;
 		room_data[room].lost_identities[user.identity].tactic_uid = uid;
 	}
-	
+
 	function store_tactic(user, room, name) {
 		if (room_data[room] && user.identity) { //room exists, user is logged in
 			if (room_data[room].lost_identities[user.identity]
 				&& room_data[room].lost_identities[user.identity].tactic_uid
-				&& room_data[room].lost_identities[user.identity].tactic_name 
+				&& room_data[room].lost_identities[user.identity].tactic_name
 				&& room_data[room].lost_identities[user.identity].tactic_name == name) {
 					var uid = room_data[room].lost_identities[user.identity].tactic_uid;
 					push_tactic_to_db(user, room, name, uid, true);
@@ -233,7 +233,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			}
 		}
 	}
-	
+
 	function restore_tactic(user, uid, cb) {
 		if (user.identity) {
 			var query = {_id:user.identity};
@@ -242,7 +242,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 				if (!err && header) {
 					var id = header.tactics[0].uid;
 					db.collection('stored_tactics').findOne({_id:id}, function(err2, result) {
-						if (!err2 && result) {							
+						if (!err2 && result) {
 							var uid = newUid();
 							room_data[uid] = result;
 							room_data[uid].last_join = Date.now();
@@ -268,11 +268,11 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			cb(newUid());
 		}
 	}
-	
+
 	function remove_tactic(identity, id) {
 		db.collection('users').updateOne({_id:identity}, {$pull: {tactics:{uid:id}}});
 	}
-	
+
 	function rename_tactic(user, uid, new_name) {
 		db.collection('users').findOne({_id:user.identity, tactics:{$elemMatch:{uid:uid}}},{'tactics.$':1}, function(err, result) {
 			if (!err && result && result.tactics) {
@@ -284,19 +284,19 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 						db.collection('users').updateOne({_id:user.identity}, {$pull: {tactics:{uid:uid, name:old_name}}});
 					}
 				});
-			}			
+			}
 		});
 	}
-	
+
 	function create_anonymous_user(req) {
 		if (!req.session.passport) {
 			req.session.passport = {};
 		}
 		req.session.passport.user = {};
 		req.session.passport.user.id = newUid();
-		req.session.passport.user.name = "Anonymous";		
+		req.session.passport.user.name = "Anonymous";
 	}
-	
+
 	//returns host without subdomain
 	function get_host(req) {
 		var host = req.hostname.split('.');
@@ -305,9 +305,9 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 		} else {
 			host = host[0];
 		}
-		return host;		
+		return host;
 	}
-	
+
 	// initializing session middleware
 	var mwCache = Object.create(null);
 	function virtualHostSession(req, res, next) {
@@ -317,7 +317,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			if (!hostSession) {
 				console.log("creating redis store for: " + host)
 				var redis_store = new RedisStore({client:redis_client});
-				hostSession = mwCache[host] = Session({secret: secrets.cookie, resave:true, saveUninitialized:false, cookie: {domain:host, maxAge: 30 * 86400 * 1000, httpOnly:true}, rolling: true, store: redis_store});
+				hostSession = mwCache[host] = Session({secret: process.env.COOKIE_SECRET || secrets.cookie, resave:true, saveUninitialized:false, cookie: {domain:host, maxAge: 30 * 86400 * 1000, httpOnly:true}, rolling: true, store: redis_store});
 				mwCache[host].store = redis_store;
 			}
       if (res) {
@@ -325,7 +325,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
       }
 		}
 	}
-  
+
 	app.use(function(req, res, next) {
 		res.header('Access-Control-Allow-Credentials', true);
 		res.header('Access-Control-Allow-Origin', '*');
@@ -333,40 +333,40 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 		res.header('Access-Control-Allow-Headers', 'X-Requested-With, X-HTTP-Method-Override, Content-Type, Accept');
 		next();
 	});
-	
+
 	app.use(virtualHostSession);
-	
+
 	// Configuring Passport
 	app.use(passport.initialize());
 	app.use(passport.session());
-	
+
 	//fix cookie, can be removed in 2 months from (07/17)
 	app.use(function(req, res, next) {
 		if (req.cookies["connect.sid"]) {
 			res.cookie(
-				'connect.sid', 
-				req.cookies["connect.sid"], 
+				'connect.sid',
+				req.cookies["connect.sid"],
 				{
 					maxAge: req.session.cookie.maxAge,
 					domain: get_host(req),
-					path: '/', 
+					path: '/',
 					httpOnly: true
 				}
 			);
 		}
 		next();
 	})
-	
+
 	//create a default user + detect language
 	app.use(function(req, res, next) {
 		var domain = req.headers.host;
-		var subDomain = domain.split('.');	
+		var subDomain = domain.split('.');
 		if (subDomain[0] == 'www') {
 			res.redirect(301, 'https://' + subDomain.slice(1).join('.') + req.originalUrl);
 			return;
 		}
 		if (!req.session.passport || !req.session.passport.user) {
-			create_anonymous_user(req);		
+			create_anonymous_user(req);
 		}
 		if (locales.indexOf(subDomain[0]) != -1) {
 			set_locale(req, res, subDomain[0]);
@@ -384,13 +384,13 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 		}
 		if (req.query.game) {
 			set_game(req, res, req.query.game)
-		}	
-		req.fullUrl = subDomain.join('.') + req.originalUrl;		
+		}
+		req.fullUrl = subDomain.join('.') + req.originalUrl;
 		req.session.last_login = Date();
 		req.session.touch();
 		next();
 	});
-	
+
 	passport.serializeUser(function(user, done) {
 		if (user.wg_account_id) {
 			db.collection('users').updateOne({_id:user.identity}, {$set: { _id:user.identity, name:user.name, identity_provider:user.identity_provider, server:user.server, wg_id:user.wg_account_id}}, {upsert:true});
@@ -404,11 +404,11 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 		done(null, user);
 	});
 
-	// session support for socket.io	
+	// session support for socket.io
 	function session_from_sessionid_host(sessionId, host, cb) {
 		if (!mwCache[host]) {
 			var redis_store = new RedisStore({client:redis_client});
-			mwCache[host] = Session({secret: secrets.cookie, resave:true, saveUninitialized:false, cookie: {domain:host, expires: new Date(Date.now() + 30 * 86400 * 1000), httpOnly: false}, rolling: true, store: redis_store});
+			mwCache[host] = Session({secret: process.env.COOKIE_SECRET || secrets.cookie, resave:true, saveUninitialized:false, cookie: {domain:host, expires: new Date(Date.now() + 30 * 86400 * 1000), httpOnly: false}, rolling: true, store: redis_store});
 			mwCache[host].store = redis_store;
 		}
 		if (sessionId) {
@@ -422,31 +422,31 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 		} else {
 			cb();
 		}
-		
+
 	}
-	
+
 	io.use(function(socket, next) {
 		// pretend we have the cookie
 		var sessionId = socket.request._query.connect_sid;
 		var host = socket.request._query.host;
-		
+
 		function done() {
 			if (!socket.request.session.passport || !socket.request.session.passport.user) {
 				create_anonymous_user(socket.request);
 			}
 			next();
-		}	
+		}
 		session_from_sessionid_host(sessionId, host, function(session) {
 			if (session) {
 				socket.request.session = session;
 				done();
 			} else {
 				socket.request.hostname = socket.handshake.headers.host;
-				virtualHostSession(socket.request, socket.request.res, done);					
+				virtualHostSession(socket.request, socket.request.res, done);
 			}
 		});
 	});
-	
+
 	// setup routes
 	var router = express.Router();
 
@@ -464,7 +464,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			game = "wot";
 		}
 		set_game(req, res, game);
-		res.render('index', { game: req.session.game, 
+		res.render('index', { game: req.session.game,
 							user: req.session.passport.user,
 							locale: req.session.locale,
 							url: req.fullUrl,
@@ -473,8 +473,8 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 	});
 	router.get(['/health_check', '/health_check.html'], function(req, res, next) {
 	  res.sendStatus(200);
-	});	
-	
+	});
+
 	//reload the secrets file
 	router.get('/reload_secrets', function(req, res, next) {
 		if (req.query.pw == secrets.admin_password) {
@@ -484,11 +484,11 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			res.status(500).send("Wrong password")
 		}
 	});
-	
+
 	function planner_redirect(req, res, game, template) {
 	  if (req.query.restore) {
       var uid = newUid();
-      restore_tactic(req.session.passport.user, req.query.restore, function (uid) {           
+      restore_tactic(req.session.passport.user, req.query.restore, function (uid) {
         save_room(uid, function() {
           delete room_data[uid];
           res.redirect(game+'2?room='+uid);
@@ -498,14 +498,14 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 		  res.redirect(game+'2?room='+newUid());
 	  }	else {
 		  set_game(req, res, game);
-		  res.render(template, { game: req.session.game, 
+		  res.render(template, { game: req.session.game,
 								 user: req.session.passport.user,
 								 locale: req.session.locale,
 								 url: req.fullUrl,
 								 sid: req.sessionID,
 								 static_host: secrets.static_host,
 								 secrets:secrets});
-								  
+
 		  if (req.session.passport.user.identity) {
 			  setImmediate(function() {
 				  var link = "https://" + req.fullUrl;
@@ -518,15 +518,15 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 					  { "$push": { "rooms": { "$each": [link], "$slice": -10 } } }
 				  )
 			  });
-		  }					  
+		  }
 	  }
 	}
-  	
-	var games = ['wot', 'aw', 'wows', 'blitz', 'lol', 'hots', 'sc2', 'csgo', 'warface', 'squad', 'R6', 'MWO', 'EC', 'propilkki2', 'pr', 'clans', 'foxhole', 'steelocean', 'pubg'];	
+
+	var games = ['wot', 'aw', 'wows', 'blitz', 'lol', 'hots', 'sc2', 'csgo', 'warface', 'squad', 'R6', 'MWO', 'EC', 'propilkki2', 'pr', 'clans', 'foxhole', 'steelocean', 'pubg'];
 	games.forEach(function(game) {
 		router.get(['/' + game + '.html', '/' + game], function(req, res, next) {
 		  set_game(req, res, game);
-		  res.render('index', { game: req.session.game, 
+		  res.render('index', { game: req.session.game,
 								user: req.session.passport.user,
 								locale: req.session.locale,
 								url: req.fullUrl,
@@ -535,15 +535,15 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 		});
 		router.get(['/'+game+'1', '/'+game+'planner.html'], function(req, res, next) {
 		  planner_redirect(req, res, game, 'planner');
-		});	
+		});
 		router.get(['/'+game+'2', '/'+game+'planner2.html'], function(req, res, next) {
 		  planner_redirect(req, res, game, 'planner2');
 		});
 		router.get(['/'+game+'3', '/'+game+'planner3.html'], function(req, res, next) {
 		  planner_redirect(req, res, game, 'planner3');
-		});			
+		});
 	});
-		
+
 	var count = 0;
 	//form {pw: pw, data: {field: field, users: [{_id:user, ...}]}}
 	router.post('/submit_summaries', function(req, res, next) {
@@ -551,7 +551,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			var data = req.body;
 			for (var i in data) {
 				var field = i;
-				var users = data[i]				
+				var users = data[i]
 				for (var j in users) {
 					var user = users[j];
 					db.collection('ws_' + field + '_summary').replaceOne({_id:user._id}, user, {upsert:true});
@@ -562,12 +562,12 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			res.status(500).send('Incorrect password')
 		}
 	});
-	
+
 	router.get(['/about.html', '/about'], function(req, res, next) {
 	  if (!req.session.game) {
 		  set_game(req, res,'wot');
 	  }
-	  res.render('about', { game: req.session.game, 
+	  res.render('about', { game: req.session.game,
 							user: req.session.passport.user,
 							locale: req.session.locale,
 							url: req.fullUrl,
@@ -578,7 +578,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 	  if (!req.session.game) {
 		set_game(req, res,'wot');
 	  }
-	  res.render('getting_started', { game: req.session.game, 
+	  res.render('getting_started', { game: req.session.game,
 									  user: req.session.passport.user,
 									  locale: req.session.locale,
 									  url: req.fullUrl,
@@ -589,33 +589,33 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 	  if (!req.session.game) {
 		set_game(req, res,'wot');
 	  }
-	  res.render('privacypolicy', { game: req.session.game, 
+	  res.render('privacypolicy', { game: req.session.game,
 								    user: req.session.passport.user,
 									locale: req.session.locale,
 									url: req.fullUrl,
 									static_host: secrets.static_host,
 									secrets:secrets});
 	});
-	
+
 	router.get(['/older_news.html','/older_news'], function(req, res, next) {
 	  if (!req.session.game) {
 		set_game(req, res,'wot');
 	  }
-	  res.render('older_news', { game: req.session.game, 
+	  res.render('older_news', { game: req.session.game,
 								 user: req.session.passport.user,
 								 locale: req.session.locale,
 								 url: req.fullUrl,
 								 static_host: secrets.static_host,
 								 secrets:secrets});
 	});
-	
+
 	router.get(['/stored_tactics.html','/stored_tactics'], function(req, res, next) {
 	  if (!req.session.game) {
 		set_game(req, res,'wot');
 	  }
 	  if (req.session.passport.user.identity) {
 		get_tactics(req.session.passport.user.identity, req.session.game, function(tactics, last_rooms) {
-		  res.render('stored_tactics', { game: req.session.game, 
+		  res.render('stored_tactics', { game: req.session.game,
 										 user: req.session.passport.user,
 										 locale: req.session.locale,
 										 tactics: tactics,
@@ -629,7 +629,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 	  } else {
 		  res.redirect('/');
 	  }
-	});	
+	});
 	router.post('/remove_tactic', function(req, res, next) {
 		if (req.session.passport.user.identity) {
 			remove_tactic(req.session.passport.user.identity, req.body.id);
@@ -647,8 +647,8 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			var uid = escaper.escape(decodeURIComponent(req.query.uid));
 			var name = escaper.escape(decodeURIComponent(req.query.name));
 			var game = escaper.escape(decodeURIComponent(req.query.game));
-			
-			db.collection('users').findOne({_id:req.session.passport.user.identity, tactics:{$elemMatch:{name:name}}}, {'tactics.$':1}, function(err, result) { 					
+
+			db.collection('users').findOne({_id:req.session.passport.user.identity, tactics:{$elemMatch:{name:name}}}, {'tactics.$':1}, function(err, result) {
 				if (!err && result && result.tactics) {
 					res.send("Error: A tactic with name: " + name + " already exists.");
 					return;
@@ -663,11 +663,11 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			return;
 		}
 		return;
-	});	
+	});
 	app.get('/logout', function(req, res) {
 	  var return_to = req.headers.referer;
 	  req.logout();
-	  res.cookie('logged_in', 'no', {maxAge: 30 * 3600 * 1000, domain: get_host(req)}); 
+	  res.cookie('logged_in', 'no', {maxAge: 30 * 3600 * 1000, domain: get_host(req)});
 	  res.redirect(return_to);
 	});
 
@@ -677,7 +677,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
         if(id >= 500000000){return "eu";}
         return "ru";
     }
-	
+
 	function get_wg_data(page, fields, player, cb) {
 		var server = get_server(player);
 		var link = "https://api.worldoftanks." + server + "/wot" + page;
@@ -716,7 +716,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			if (done) done();
 		});
 	}
-	
+
 	OpenIDStrategy = require('passport-openid').Strategy;
 	passport.use('openid', new OpenIDStrategy({
 			returnURL: "/auth/openid/callback",
@@ -728,38 +728,38 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			if (req.session.passport && req.session.passport.user && req.session.passport.user.id) {
 				user.id = req.session.passport.user.id;
 			} else {
-				user.id = newUid();		
+				user.id = newUid();
 			}
 			user.server = identifier.split('://')[1].split(".wargaming")[0];
 			user.identity_provider = "wargaming";
 			var id_string = identifier.split('/id/')[1].split("/")[0];
 			user.wg_account_id = id_string.split('-')[0];
-			user.identity = "wg-" + user.wg_account_id;			
-			user.name = id_string.split('-')[1];			
+			user.identity = "wg-" + user.wg_account_id;
+			user.name = id_string.split('-')[1];
 			var promises = [];
-			promises.push(new Promise(function(resolve){ 
+			promises.push(new Promise(function(resolve){
 				decorate_session(user, function() { resolve(); });
 			}))
-			promises.push(new Promise(function(resolve){ 
-				get_wg_data("/account/info/?", ["clan_id"], user.wg_account_id, function(data) {				
+			promises.push(new Promise(function(resolve){
+				get_wg_data("/account/info/?", ["clan_id"], user.wg_account_id, function(data) {
 					if (data) {
 						user.clan_id = String(data.clan_id);
 						db.collection('update_clans').replaceOne({_id:user.clan_id}, {_id:user.clan_id}, {upsert: true});
 					}
 					resolve();
 				});
-			}))		
+			}))
 			Promise.all(promises).then(function() {
 				db.collection('users').updateOne({_id:user.identity}, {$set: {name:user.name, identity_provider:user.identity_provider, server:user.server, wg_id:user.wg_account_id, clan_id:user.clan_id}}, {upsert:true});
 				done(null, user);
 			})
 		}
 	));
-	
+
 	//openid
 	router.post('/auth/openid', save_return, function(req,res,next) { passport.authenticate('openid', { returnURL: 'https://'+req.fullUrl.split("/")[0]+'/auth/openid/callback' })(req, res, next); } );
 	router.get('/auth/openid/callback', function(req,res,next) { passport.authenticate('openid', { returnURL: 'https://'+req.fullUrl.split("/")[0]+'/auth/openid/callback' })(req, res, next); }, redirect_return);
-	
+
 	if (secrets.google.client_id != "") {
 		StrategyGoogle = require('passport-google-oauth2').Strategy;
 		passport.use('google', new StrategyGoogle({
@@ -780,19 +780,19 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			user.identity = profile.id;
 			user.identity_provider = "google";
 			user.name = profile.displayName;
-			
+
 			db.collection('users').updateOne({_id:user.identity}, {$set: {name:user.name, identity_provider:user.identity_provider}}, {upsert:true});
 			decorate_session(user, function() {
 				done(null, user);
 			});
 		  }
 		));
-		
+
 		//google
 		router.post('/auth/google', save_return, function(req,res,next) { passport.authenticate('google', { callbackURL: 'https://'+req.fullUrl.split("/")[0]+'/auth/google/callback' })(req, res, next); } );
 		router.get('/auth/google/callback', function(req,res,next) { passport.authenticate('google', { callbackURL: 'https://'+req.fullUrl.split("/")[0]+'/auth/google/callback' })(req, res, next); }, redirect_return);
 	}
-	
+
 	if (secrets.vk.client_id != "") {
 		var VKontakteStrategy = require('passport-vkontakte').Strategy;
 		passport.use('vk', new VKontakteStrategy({
@@ -812,19 +812,19 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			user.identity = "vk-" + profile.id;
 			user.identity_provider = "vk";
 			user.name = profile.displayName;
-			
+
 			db.collection('users').updateOne({_id:user.identity}, {$set: {name:user.name, identity_provider:user.identity_provider}}, {upsert:true});
 			decorate_session(user, function() {
 				done(null, user);
-			});			
+			});
 		  }
 		));
-		
+
 		//vk
 		router.post('/auth/vk', save_return, function(req,res,next) { passport.authenticate('vk', { callbackURL: 'https://'+req.fullUrl.split("/")[0]+'/auth/vk/callback' })(req, res, next); } );
 		router.get('/auth/vk/callback', function(req,res,next) { passport.authenticate('vk', { callbackURL: 'https://'+req.fullUrl.split("/")[0]+'/auth/vk/callback' })(req, res, next); }, redirect_return);
 	}
-	
+
 	if (secrets.battlenet.client_id != "") {
 		StrategyBnet = require('passport-bnet').Strategy;
 		passport.use('battlenet', new StrategyBnet({
@@ -844,18 +844,18 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			user.identity = 'bnet-'+profile.id;
 			user.identity_provider = "bnet";
 			user.name = profile.battletag;
-			
+
 			db.collection('users').updateOne({_id:user.identity}, {$set: {name:user.name, identity_provider:user.identity_provider}}, {upsert:true});
 			decorate_session(user, function() {
 				done(null, user);
-			});		
+			});
 		  }
-		));	
-		
+		));
+
 		StrategyBnet.prototype.authorizationParams = function(options) {
 		  return { state: options.redirectUrl };
 		};
-		
+
 		//battle.net
 		router.post('/auth/battlenet', save_return, function(req,res,next) { passport.authenticate('battlenet', { callbackURL: 'https://karellodewijk.github.io/battlenet_redirect.html', redirectUrl:'https://' + req.fullUrl.split("/")[0] + '/auth/battlenet/callback' })(req, res, next); } );
 		router.get('/auth/battlenet/callback', function(req,res,next) { passport.authenticate('battlenet', { callbackURL: 'https://karellodewijk.github.io/battlenet_redirect.html', redirectUrl:'https://' + req.fullUrl.split("/")[0] + '/auth/battlenet/callback' })(req, res, next); }, redirect_return);
@@ -880,14 +880,14 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			user.identity = profile.id;
 			user.identity_provider = "facebook";
 			user.name = profile.displayName;
-			
+
 			db.collection('users').updateOne({_id:user.identity}, {$set: {name:user.name, identity_provider:user.identity_provider}}, {upsert:true});
 			decorate_session(user, function() {
 				done(null, user);
-			});			
+			});
 		  }
 		));
-		
+
 		//facebook
 		router.post('/auth/facebook', save_return, function(req,res,next) { passport.authenticate('facebook', { callbackURL: 'https://'+req.fullUrl.split("/")[0]+'/auth/facebook/callback' })(req, res, next); } );
 		router.get('/auth/facebook/callback', function(req,res,next) { passport.authenticate('facebook', { callbackURL: 'https://'+req.fullUrl.split("/")[0]+'/auth/facebook/callback' })(req, res, next); }, redirect_return);
@@ -912,20 +912,20 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			user.identity = profile.id;
 			user.identity_provider = "twitter";
 			user.name = profile.displayName;
-			
+
 			db.collection('users').updateOne({_id:user.identity}, {$set: {name:user.name, identity_provider:user.identity_provider}}, {upsert:true});
 			decorate_session(user, function() {
 				done(null, user);
-			});		
+			});
 		  }
-		));	
-		
+		));
+
 		//twitter
 		router.post('/auth/twitter', save_return, function(req,res,next) { passport.authenticate('twitter', { callbackURL: 'https://wottactic.com/twitter_redirect.html?dest=' + 'https://' + req.fullUrl.split("/")[0] + '/auth/twitter/callback' })(req, res, next); } );
 		router.get('/auth/twitter/callback', function(req,res,next) { passport.authenticate('twitter', { callbackURL: 'https://wottactic.com/twitter_redirect.html?dest=' + 'https://' + req.fullUrl.split("/")[0] + '/auth/twitter/callback' })(req, res, next); }, redirect_return);
 	}
 
-	if (secrets.steam.api_key != "") {		
+	if (secrets.steam.api_key != "") {
 		var SteamWebAPI = require('steam-web');
 		var steam = new SteamWebAPI({ apiKey: secrets.steam.api_key, format: 'json' });
 		passport.use('steam', new OpenIDStrategy({
@@ -943,7 +943,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 				if (req.session.passport && req.session.passport.user && req.session.passport.user.id) {
 					user.id = req.session.passport.user.id;
 				} else {
-					user.id = newUid();		
+					user.id = newUid();
 				}
 				steam.getPlayerSummaries({
 					steamids: [ identifier ],
@@ -953,14 +953,14 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 							user.identity_provider = "steam";
 							user.name = result.response.players[0].personaname;
 						}
-						
+
 						db.collection('users').updateOne({_id:user.identity}, {$set: {name:user.name, identity_provider:user.identity_provider}}, {upsert:true});
 						decorate_session(user, function() {
 							done(null, user);
 						});
-						
+
 					}
-				});			
+				});
 			}
 		));
 
@@ -968,8 +968,8 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 		router.post('/auth/steam', save_return, function(req,res,next) { passport.authenticate('steam', { returnURL: "https://wottactic.com/steam_redirect.html?dest=" + "https://" + req.hostname + "/auth/steam/callback/" })(req, res, next); } );
 		router.get('/auth/steam/callback', function(req,res,next) { passport.authenticate('steam', { returnURL: "https://wottactic.com/steam_redirect.html?dest=" + "https://" + req.hostname + "/auth/steam/callback/" })(req, res, next); }, redirect_return);
 	}
-	
-	
+
+
 	function copy_slides(source, target, res, slide) {
 		if (source.slides) {
 			if (Object.keys(source.slides).length > 100) {
@@ -1007,30 +1007,30 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			res.send("Success");
 		}
 	}
-	
+
 	router.post('/add_to_room', function(req, res, next) {
 		var sessionId = req.body.session_id;
 		var host = req.body.host;
 		var slide = req.body.slide;
-		
-		session_from_sessionid_host(sessionId, host, function(session) {			
+
+		session_from_sessionid_host(sessionId, host, function(session) {
 			var target = req.body.target;
 			var user = session.passport.user;
-						
+
 			if (!room_data[target]) {
 				res.send("Error: room is not active or does not exist.");
 				return;
 			} else if (room_data[target].locked
-					  && (!room_data[target].userlist[user.id] || !room_data[target].userlist[user.id].role) 
+					  && (!room_data[target].userlist[user.id] || !room_data[target].userlist[user.id].role)
 					  && (!room_data[target].lost_identities[user.identity] || !room_data[target].lost_identities[user.identity].role)) {
 				res.send("Error: You don't have permission for that room.");
 				return;
 			}
-			
+
 			var source = req.body.source;
 			if (req.body.stored == "true") {
 				db.collection('stored_tactics').findOne({_id:source}, function(err, result) {
-					if (!err && result) { 
+					if (!err && result) {
 						copy_slides(result, target, res, slide);
 					} else {
 						res.send("Error: tactic not found");
@@ -1052,19 +1052,19 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 					} else {
 						res.send("Error: tactic not found");
 					}
-				});				
+				});
 			}
 		});
-	});	
+	});
 	function save_return(req, res, next) {
 		req.session.return_to = req.headers.referer;
 		next();
 	}
 	function redirect_return(req, res, next) {
 		if (req.session.passport.user.identity) {
-			res.cookie('logged_in', req.session.passport.user.identity, {maxAge: 30 * 3600 * 1000, domain: get_host(req)}); 
+			res.cookie('logged_in', req.session.passport.user.identity, {maxAge: 30 * 3600 * 1000, domain: get_host(req)});
 		} else {
-			res.cookie('logged_in', "no", {maxAge: 30 * 3600 * 1000, domain: get_host(req)}); 
+			res.cookie('logged_in', "no", {maxAge: 30 * 3600 * 1000, domain: get_host(req)});
 		}
 		if (!req.session.return_to || req.session.return_to.match("^undefined")) {
 			console.error("Invalid return path:", req.session.return_to)
@@ -1091,7 +1091,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 					clearInterval(timer);
 					res.send('Success');
 				}
-			}, 500);			
+			}, 500);
 		} else {
 			res.send('Invalid password')
 		}
@@ -1109,7 +1109,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			res.send('Invalid password')
 		}
 	});
- 
+
 	// /**
 	 // * Starts profiling and schedules its end
 	 // */
@@ -1142,7 +1142,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			// cb(profile_data);
 		// });
 	// }
-	
+
 	router.get('/profile', function(req, res, next) {
 		if (req.query.pw == secrets.admin_password) {
 			var time;
@@ -1160,10 +1160,10 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 	//some basic logging data
 	router.get('/log', function(req, res, next) {
 		var log_data = "Active rooms: " + Object.keys(room_data).length + "<br />\n";
-		log_data += "#clients: " + io.engine.clientsCount + "<br />\n";	
+		log_data += "#clients: " + io.engine.clientsCount + "<br />\n";
 		res.send(log_data);
 	});
-	
+
 	//reloads templates, so I don't have to restart the server to add basic content
 	var lastmod = (new Date()).toISOString().substr(0,10);
 	router.get('/refresh', function(req, res, next) {
@@ -1181,7 +1181,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			res.send('Invalid password')
 		}
 	});
-	
+
 	//////////////
 	//clanportal//
 	//////////////
@@ -1192,7 +1192,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 	//////////////////
 	//end clanportal//
 	//////////////////
-	
+
 	var robots_base = "User-agent: *\n";
 	robots_base += "Disallow: /auth/twitter\n";
 	robots_base += "Disallow: /auth/facebook\n";
@@ -1201,16 +1201,16 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 	robots_base += "Disallow: /auth/openid\n";
 	robots_base += "Disallow: /auth/steam\n";
 	robots_base += "Disallow: /auth/battlenet\n";
-	
-	
+
+
 	router.get('/robots.txt', function(req, res, next) {
 		res.header('Content-Type', 'text/plain');
 		res.send(robots_base);
 	});
-	
+
 	//add router to app
-	app.use('/', router);		
-	
+	app.use('/', router);
+
 	// catch 404 and forward to error handler
 	app.use(function(req, res, next) {
 		var err = new Error('Not Found: "' + req.path + '"');
@@ -1229,15 +1229,15 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			} else {
 				room_data[room].userlist[user.id] = {name:user.name, id:user.id, role:user.role, identity:user.identity, logged_in:(user.identity) ? true : false};
 				room_data[room].userlist[user.id].count = 1;
-				if (room_data[room].lost_users[user.id]) {				
+				if (room_data[room].lost_users[user.id]) {
 					//if a user was previously connected to this room and had a role, restore that role
 					room_data[room].userlist[user.id].role = room_data[room].lost_users[user.id];
 				} else if (user.identity && room_data[room].lost_identities[user.identity] && room_data[room].lost_identities[user.identity].role) {
 					//if a user with given identity had a role, restore that role
 					room_data[room].userlist[user.id].role = room_data[room].lost_identities[user.identity].role;
 				}
-				socket.broadcast.to(room).emit('add_user', room_data[room].userlist[user.id]);			
-			}			
+				socket.broadcast.to(room).emit('add_user', room_data[room].userlist[user.id]);
+			}
 			socket.join(room);
 			var tactic_name;
 			if (room_data[room].lost_identities[user.identity] && room_data[room].lost_identities[user.identity].tactic_name) {
@@ -1247,11 +1247,11 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			} else {
 				tactic_name = "";
 			}
-			
+
 			socket.emit('room_data', room_data[room], user.id, tactic_name, socket.request.session.locale);
 		}
 	}
-	
+
 	function create_empty_room(user, game) {
 		var room = {};
 		var slide0_uid = newUid();
@@ -1285,18 +1285,18 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 	}
 
 	//socket.io callbacks
-	io.sockets.on('connection', function(socket) {		
+	io.sockets.on('connection', function(socket) {
 		socket.on('sync_clock', function() {
 			socket.emit('sync_clock', Date.now());
 		});
-		
-		socket.on('join_room', function(room, game) {			
+
+		socket.on('join_room', function(room, game) {
 			if (!(room in room_data)) {
 				db.collection('tactics').findOne({_id:room}, function(err, result) {
 					if (!err && result) {
 						if (!(room in room_data)) { //it may have been created already
 							room_data[room] = result;
-							room_data[room].last_join = Date.now();	
+							room_data[room].last_join = Date.now();
 							room_data[room].userlist = {};
 							room_data[room].trackers = {};
 						}
@@ -1315,9 +1315,9 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			}
 		});
 
-		
+
 		socket.onclose = function(reason) {
-			//hijack the onclose event because otherwise we lose socket.rooms data		
+			//hijack the onclose event because otherwise we lose socket.rooms data
 			if (socket.request.session.passport) { //users, even anonymouse ones should always have a passport, but sometimes they don't
 				var user = socket.request.session.passport.user;
 				for (var room in socket.rooms) {
@@ -1334,7 +1334,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 						} else {
 							room_data[room].userlist[user.id].count--;
 						}
-					}	
+					}
 				}
 			}
 			for (var room in socket.rooms) {
@@ -1344,12 +1344,12 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			}
 			Object.getPrototypeOf(this).onclose.call(this,reason); //call original onclose
 		}
-		
+
 		//socket.on('error', function(e){
 		//	console.log("error: ", e);
 		//	console.trace();
 		//});
-		
+
 		socket.on('create_entity', function(room, entity, slide) {
 			if (room_data[room] && entity) {
 				if (room_data[room].slides[slide]) {
@@ -1362,7 +1362,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 				}
 			}
 		});
-		
+
 		socket.on('drag', function(room, uid, slide, x, y, scale, rotation) {
 			if (room_data[room] && room_data[room].slides[slide] && room_data[room].slides[slide].entities[uid]) {
 				room_data[room].slides[slide].entities[uid].x = x;
@@ -1391,14 +1391,14 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 				socket.broadcast.to(room).emit('show_grid', slide, show_gid, socket.request.session.passport.user.id);
 			}
 		});
-		
+
 		socket.on('track', function(room, tracker) {
 			if (room_data[room]) {
 				room_data[room].trackers[tracker.uid] = tracker;
 				socket.broadcast.to(room).emit('track', tracker, socket.request.session.passport.user.id);
 			}
 		});
-		
+
 		socket.on('track_move', function(room, uid, delta_x, delta_y) {
 			if (room_data[room] && room_data[room].trackers[uid]) {
 				room_data[room].trackers[uid].x += delta_x;
@@ -1406,14 +1406,14 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 				socket.broadcast.to(room).emit('track_move', uid, delta_x, delta_y);
 			}
 		});
-		
+
 		socket.on('stop_track', function(room, uid) {
 			if (room_data[room]) {
 				delete room_data[room].trackers[uid];
 				socket.broadcast.to(room).emit('stop_track', uid);
 			}
 		});
-		
+
 		socket.on('remove', function(room, uid, slide) {
 			if (room_data[room] && room_data[room].slides[slide] && room_data[room].slides[slide].entities[uid]) {
 				delete room_data[room].slides[slide].entities[uid];
@@ -1424,7 +1424,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 		socket.on('chat', function(room, message, color) {
 			socket.broadcast.to(room).emit('chat', message, color);
 		});
-		
+
 		socket.on('update_user', function(room, user) {
 			if (room_data[room] && room_data[room].userlist) {
 				room_data[room].userlist[user.id] = user;
@@ -1445,7 +1445,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 							room_data[room].lost_identities[user.identity].role = user.role;
 						}
 					}
-				}				
+				}
 				socket.broadcast.to(room).emit('add_user', user, socket.request.session.passport.user.id);
 			}
 		});
@@ -1459,13 +1459,13 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 						room_data[room].pan_zoom = [1, 0, 0];
 					}
 					room_data[room].active_slide = uid;
-					io.to(room).emit('change_slide', uid); 
+					io.to(room).emit('change_slide', uid);
 				} else {
-					io.to(room).emit('change_slide', room_data[room].active_slide, socket.request.session.passport.user.id); 
+					io.to(room).emit('change_slide', room_data[room].active_slide, socket.request.session.passport.user.id);
 				}
 			}
 		});
-		
+
 		function find_previous_slide(room, upper_bound) {
 			var largest = -9007199254740990;
 			var uid = 0;
@@ -1491,7 +1491,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			}
 			return uid;
 		}
-		
+
 		function hash(uid) {
 			var hash = 0;
 			for (var i = 0; i < uid.length; i++) {
@@ -1499,11 +1499,11 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			}
 			return hash;
 		}
-		
-		//if 2 players add a slide at the same position (same .order) concurrently 
+
+		//if 2 players add a slide at the same position (same .order) concurrently
 		//then we look at a hash of their uid, if the hash of the new slide is lower
-		//we assign it a lower order (put if before the slide we know about). If it is 
-		//higher we assign it a higher order. 
+		//we assign it a lower order (put if before the slide we know about). If it is
+		//higher we assign it a higher order.
 		//Clients basically resolve this the same way. The result will be that the revised
 		//order numbers will be the same regardless of the order in which slide data arrived
 		function resolve_order_conflicts(room, slide, max_recursions) {
@@ -1523,16 +1523,16 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 						var next_order = slide.order + 4294967296;
 						if (next_slide != 0) {
 							next_order = room_data[room].slides[next_slide].order;
-						}					
-						slide.order = Math.floor((next_order - slide.order) / 2);						
+						}
+						slide.order = Math.floor((next_order - slide.order) / 2);
 					}
-					
+
 					resolve_order_conflicts(room, slide, max_recursions-1); //we do this again because it might still not be unique
 					return;
 				}
 			}
 		}
-		
+
 		socket.on('new_slide', function(room, slide) {
 			if (room_data[room]) {
 				resolve_order_conflicts(room, slide, 5);
@@ -1543,7 +1543,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 			}
 		});
 
-		socket.on('remove_slide', function(room, uid) {			
+		socket.on('remove_slide', function(room, uid) {
 			if (room_data[room]) {
 				if (Object.keys(room_data[room].slides).length > 1) {
 					if (uid == room_data[room].active_slide) {
@@ -1556,19 +1556,19 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 					}
 					delete room_data[room].slides[uid];
 					socket.broadcast.to(room).emit('remove_slide', uid, socket.request.session.passport.user.id);
-					
+
 					io.to(room).emit('change_slide', room_data[room].active_slide);
 				}
 			}
 		});
-		
+
 		socket.on('rename_slide', function(room, uid, name) {
 			if (room_data[room] && room_data[room].slides[uid]) {
 				room_data[room].slides[uid].name = name;
 				socket.broadcast.to(room).emit('rename_slide', uid, name, socket.request.session.passport.user.id);
 			}
-		});	
-		
+		});
+
 		socket.on('change_slide_order', function(room, uid, order) {
 			if (room_data[room] && room_data[room].slides[uid]) {
 				room_data[room].slides[uid].order = order;
@@ -1582,7 +1582,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 				socket.broadcast.to(room).emit('lock_room', is_locked, socket.request.session.passport.user.id);
 			}
 		});
-		
+
 		socket.on('presentation_mode', function(room, presentation_mode, active_slide) {
 			if (room_data[room]) {
 				room_data[room].presentation_mode = presentation_mode;
@@ -1600,8 +1600,8 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 
 		socket.on('save_room', function(room, name) {
 			save_room(room, function(){});
-		});		
-		
+		});
+
 		socket.on('nuke_room', function(room, name) {
 			var user = socket.request.session.passport.user;
 			if (room_data[room].userlist[user.id] && room_data[room].userlist[user.id].role == 'owner') {
@@ -1613,14 +1613,14 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 				io.to(room).emit('room_data', room_data[room], user.id, tactic_name, socket.request.session.locale);
 			}
 		});
-		
+
 		socket.on('play_video', function(room, frame, rate) {
 			if (room_data[room]) {
 				room_data[room].playing = true;
 				io.to(room).emit('play_video', frame, Date.now()+500, rate, socket.request.session.passport.user.id);
 			}
 		});
-		
+
 		socket.on('pause_video', function(room, frame) {
 			if (room_data[room]) {
 				room_data[room].last_sync = [frame, Date.now()];
@@ -1642,7 +1642,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 				socket.broadcast.to(room).emit('seek_video', frame, timestamp, socket.request.session.passport.user.id);
 			}
 		});
-		
+
 		socket.on('request_sync', function(room) {
 			socket.broadcast.to(room).emit('request_sync');
 		});
@@ -1653,28 +1653,28 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 				socket.broadcast.to(room).emit('change_rate', rate);
 			}
 		});
-		
+
 		socket.on('pan_zoom', function(room, slide, zoom_level, x, y) {
 			if (room_data[room] && room_data[room].slides[slide]) {
 				room_data[room].slides[slide].pan_zoom = [zoom_level, x, y];
 				socket.broadcast.to(room).emit('pan_zoom', slide, zoom_level, x, y, socket.request.session.passport.user.id);
 			}
 		});
-		
+
 	});
-	
+
 	//create server
-	var server = http.createServer(app);	
+	var server = http.createServer(app);
 	io.attach(server)
-  
+
   var port = secrets.port;
   if (process.env.PORT) {
     port = process.env.PORT
   }
-  
+
   console.log("starting server on port:", port);
-	server.listen(port);	
-	
+	server.listen(port);
+
 });
 
-}); //end redis AUTH
+// }); //end redis AUTH
