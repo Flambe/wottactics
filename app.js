@@ -468,7 +468,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 							user: req.session.passport.user,
 							locale: req.session.locale,
 							url: req.fullUrl,
-                            static_host: secrets.static_host,
+                            static_host: process.env.STATIC_HOST || secrets.static_host,
 							secrets:secrets});
 	});
 	router.get(['/health_check', '/health_check.html'], function(req, res, next) {
@@ -503,7 +503,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 								 locale: req.session.locale,
 								 url: req.fullUrl,
 								 sid: req.sessionID,
-								 static_host: secrets.static_host,
+								 static_host: process.env.STATIC_HOST || secrets.static_host,
 								 secrets:secrets});
 
 		  if (req.session.passport.user.identity) {
@@ -530,7 +530,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 								user: req.session.passport.user,
 								locale: req.session.locale,
 								url: req.fullUrl,
-								static_host: secrets.static_host,
+								static_host: process.env.STATIC_HOST || secrets.static_host,
 								secrets:secrets});
 		});
 		router.get(['/'+game+'1', '/'+game+'planner.html'], function(req, res, next) {
@@ -571,7 +571,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 							user: req.session.passport.user,
 							locale: req.session.locale,
 							url: req.fullUrl,
-							static_host: secrets.static_host,
+							static_host: process.env.STATIC_HOST || secrets.static_host,
 						    secrets:secrets});
 	});
 	router.get(['/getting_started.html','/getting_started'], function(req, res, next) {
@@ -582,7 +582,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 									  user: req.session.passport.user,
 									  locale: req.session.locale,
 									  url: req.fullUrl,
-									  static_host: secrets.static_host,
+									  static_host: process.env.STATIC_HOST || secrets.static_host,
 									  secrets:secrets});
 	});
 	router.get(['/privacypolicy.html', '/privacypolicy'], function(req, res, next) {
@@ -593,7 +593,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 								    user: req.session.passport.user,
 									locale: req.session.locale,
 									url: req.fullUrl,
-									static_host: secrets.static_host,
+									static_host: process.env.STATIC_HOST || secrets.static_host,
 									secrets:secrets});
 	});
 
@@ -605,7 +605,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 								 user: req.session.passport.user,
 								 locale: req.session.locale,
 								 url: req.fullUrl,
-								 static_host: secrets.static_host,
+								 static_host: process.env.STATIC_HOST || secrets.static_host,
 								 secrets:secrets});
 	});
 
@@ -622,7 +622,7 @@ MongoClient.connect(connection_string, {reconnectTries:99999999}, function(err, 
 										 rooms: last_rooms,
 										 url: req.fullUrl,
 										 sid: req.sessionID,
-										 static_host: secrets.static_host,
+										 static_host: process.env.STATIC_HOST || secrets.static_host,
 										 socket_io_servers: secrets.socket_io_servers,
 										 secrets:secrets});
 		});
